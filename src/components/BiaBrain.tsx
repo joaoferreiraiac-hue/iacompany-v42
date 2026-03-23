@@ -15,6 +15,8 @@ export const BiaBrain: React.FC = () => {
 
   useEffect(() => {
     // 1. Listen for new messages in the 'whatsapp_commands' table
+    console.log('BiaBrain: Starting to listen for WhatsApp commands via Supabase Realtime...');
+    
     const channel = supabase
       .channel('whatsapp-commands')
       .on(
@@ -22,14 +24,25 @@ export const BiaBrain: React.FC = () => {
         { event: 'INSERT', schema: 'public', table: 'whatsapp_commands' },
         (payload) => {
           const newCommand = payload.new;
+          console.log('BiaBrain: New command received from Supabase:', newCommand);
+          
           if (!newCommand.processed) {
+            toast.success(`Bia recebeu um comando: "${newCommand.message_text.substring(0, 20)}..."`, {
+              icon: '🤖',
+              duration: 4000
+            });
             processCommand(newCommand);
+          } else {
+            console.log('BiaBrain: Command already processed, skipping.');
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`BiaBrain: Realtime subscription status: ${status}`);
+      });
 
     return () => {
+      console.log('BiaBrain: Cleaning up Realtime subscription.');
       supabase.removeChannel(channel);
     };
   }, []);

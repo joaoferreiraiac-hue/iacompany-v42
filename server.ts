@@ -6,13 +6,20 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error('❌ Supabase credentials missing in server environment!');
+}
 
 const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
   supabaseKey || 'placeholder-key'
 );
+
+let lastWebhookReceived: string | null = null;
+let lastMessageExtracted: string | null = null;
 
 async function startServer() {
   const app = express();
@@ -20,66 +27,103 @@ async function startServer() {
 
   app.use(express.json());
 
+    // Health check and status endpoint
+    app.get('/api/status', (req, res) => {
+      res.json({ 
+        status: 'online', 
+        supabaseConfigured: !!supabaseUrl && supabaseUrl !== 'https://placeholder.supabase.co',
+        geminiConfigured: !!(process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+        evoConfigured: !!(process.env.VITE_EVO_API_URL && process.env.VITE_EVO_API_KEY && process.env.VITE_EVO_INSTANCE),
+        lastWebhookReceived,
+        lastMessageExtracted,
+        time: new Date().toISOString() 
+      });
+    });
+
     // Webhook for Evolution API
     app.post('/api/webhook/whatsapp', async (req, res) => {
       try {
+        lastWebhookReceived = new Date().toISOString();
         const data = req.body;
         const event = data.event?.toLowerCase();
         
         console.log(`--- WhatsApp Webhook Received: ${event} ---`);
-
+        
         // Evolution API sends message data in different formats depending on the event
         if (event === 'messages.upsert' || event === 'messages_upsert') {
-          // Handle both single object and array of messages
-          const messages = Array.isArray(data.data) ? data.data : [data.data];
+          let messages = [];
+          if (data.data?.messages && Array.isArray(data.data.messages)) {
+            messages = data.data.messages;
+          } else if (Array.isArray(data.data)) {
+            messages = data.data;
+          } else if (data.data) {
+            messages = [data.data];
+          }
           
           for (const msg of messages) {
-            // Skip if no message content
             if (!msg) continue;
 
-            // Evolution API message structure can vary
-            const message = msg.message || msg;
+            const messageContent = msg.message || msg;
             const remoteJid = msg.key?.remoteJid || msg.remoteJid;
             const pushName = msg.pushName || 'Desconhecido';
             const fromMe = msg.key?.fromMe || false;
             
-            // Get text content from various message types
-            const text = message.conversation || 
-                         message.extendedTextMessage?.text || 
-                         message.imageMessage?.caption || 
-                         message.buttonsResponseMessage?.selectedButtonId ||
-                         message.listResponseMessage?.title ||
-                         '';
+            // Robust text extraction
+            let text = '';
+            if (messageContent.conversation) {
+              text = messageContent.conversation;
+            } else if (messageContent.extendedTextMessage?.text) {
+              text = messageContent.extendedTextMessage.text;
+            } else if (messageContent.imageMessage?.caption) {
+              text = messageContent.imageMessage.caption;
+            } else if (messageContent.videoMessage?.caption) {
+              text = messageContent.videoMessage.caption;
+            } else if (messageContent.buttonsResponseMessage?.selectedButtonId) {
+              text = messageContent.buttonsResponseMessage.selectedButtonId;
+            } else if (messageContent.listResponseMessage?.title) {
+              text = messageContent.listResponseMessage.title;
+            } else if (typeof messageContent === 'string') {
+              text = messageContent;
+            } else if (msg.text) {
+              text = msg.text;
+            }
+
+            console.log(`Extracted text: "${text}", fromMe: ${fromMe}, remoteJid: ${remoteJid}`);
 
             // Loop prevention: skip if message contains the hidden bot character (\u200B)
-            if (text.includes('\u200B')) {
+            if (text && text.includes('\u200B')) {
               console.log('Skipping message sent by the bot (hidden character detected).');
               continue;
             }
 
             // Skip messages sent by the user to themselves if they don't mention Bia
-            if (fromMe && !text.toLowerCase().includes('bia')) {
+            // We use a more permissive check here to ensure we don't miss anything
+            const containsBia = text.toLowerCase().includes('bia');
+            if (fromMe && !containsBia) {
               console.log('Skipping message sent by the user to themselves (no Bia mention).');
               continue;
             }
 
             if (text) {
+              lastMessageExtracted = text;
               console.log(`Processing message from ${pushName} (${remoteJid}): "${text}"`);
               
               // Insert into a table for the frontend to process
-              const { error } = await supabase.from('whatsapp_commands').insert([{
+              const { data: insertData, error } = await supabase.from('whatsapp_commands').insert([{
                 sender_name: pushName,
                 sender_number: remoteJid,
                 message_text: text,
                 processed: false,
                 created_at: new Date().toISOString()
-              }]);
+              }]).select();
 
               if (error) {
                 console.error('Error inserting command into Supabase:', error);
               } else {
-                console.log('Command inserted successfully into Supabase for BiaBrain to process.');
+                console.log('Command inserted successfully into Supabase:', insertData);
               }
+            } else {
+              console.log('No text content found in message structure. Full message:', JSON.stringify(msg, null, 2));
             }
           }
         }

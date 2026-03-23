@@ -263,6 +263,32 @@ export default function Dashboard() {
   });
   const backupInputRef = useRef<HTMLInputElement>(null);
   
+  const [biaStatus, setBiaStatus] = useState<{ 
+    status: string; 
+    supabaseConfigured: boolean;
+    geminiConfigured: boolean;
+    evoConfigured: boolean;
+    lastWebhookReceived: string | null;
+    lastMessageExtracted: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/status');
+        if (res.ok) {
+          const data = await res.json();
+          setBiaStatus(data);
+        }
+      } catch (e) {
+        console.error('Error checking Bia status:', e);
+      }
+    };
+    checkStatus();
+    const interval = setInterval(checkStatus, 10000); // Check more frequently for debugging
+    return () => clearInterval(interval);
+  }, []);
+
   const openTickets = tickets.filter(t => t.status !== 'CONCLUIDO').length;
   const pendingApprovalCount = tickets.filter(t => t.status === 'PENDENTE_APROVACAO').length;
   const lowStockCount = supplyItems.filter(item => item.currentStock <= item.minStock).length;
@@ -1292,9 +1318,66 @@ export default function Dashboard() {
 
       <header className="mb-4 md:mb-12 flex justify-between items-start relative z-10 gap-2">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl sm:text-4xl md:text-6xl font-light tracking-tight text-white shrink-0">Iniciar</h1>
-          <button 
-            onClick={() => setIsEditMode(!isEditMode)}
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl font-light tracking-tight text-white shrink-0">Iniciar</h1>
+            
+            {/* Bia Status Indicator */}
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border backdrop-blur-md transition-all mt-2 md:mt-4 ${
+              biaStatus?.status === 'online' 
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                : 'bg-red-500/10 border-red-500/20 text-red-400'
+            }`}>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${
+                biaStatus?.status === 'online' ? 'bg-emerald-400' : 'bg-red-400'
+              }`} />
+              <span className="text-[10px] font-black uppercase tracking-widest">
+                Bia {biaStatus?.status === 'online' ? 'Online' : 'Offline'}
+              </span>
+              {biaStatus?.lastWebhookReceived && (
+                <span className="text-[8px] opacity-60 ml-2">
+                  Último sinal: {new Date(biaStatus.lastWebhookReceived).toLocaleTimeString('pt-BR')}
+                </span>
+              )}
+              {!biaStatus?.supabaseConfigured && biaStatus?.status === 'online' && (
+                <span className="text-[8px] opacity-60 ml-1">(Erro Supabase)</span>
+              )}
+              {!biaStatus?.geminiConfigured && biaStatus?.status === 'online' && (
+                <span className="text-[8px] opacity-60 ml-1">(Erro IA)</span>
+              )}
+              {!biaStatus?.evoConfigured && biaStatus?.status === 'online' && (
+                <span className="text-[8px] opacity-60 ml-1">(Erro WhatsApp)</span>
+              )}
+            </div>
+          </div>
+          
+          {biaStatus?.lastMessageExtracted && (
+            <div className="bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 mb-2 w-fit animate-pulse">
+              <p className="text-[8px] font-black uppercase tracking-widest text-white/40 mb-1">Bia ouviu agora mesmo:</p>
+              <p className="text-[10px] italic text-emerald-400">"{biaStatus.lastMessageExtracted}"</p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="bg-black/40 border border-white/5 rounded-lg px-2 py-1 flex items-center gap-2">
+              <span className="text-[8px] text-white/40 uppercase font-bold">Webhook:</span>
+              <code className="text-[9px] text-blue-400 font-mono truncate max-w-[150px]">
+                {window.location.origin}/api/webhook/whatsapp
+              </code>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/api/webhook/whatsapp`);
+                  toast.success('URL do Webhook copiada!');
+                }}
+                className="p-1 hover:bg-white/10 rounded transition-colors"
+                title="Copiar URL do Webhook"
+              >
+                <Database className="w-3 h-3 text-white/60" />
+              </button>
+            </div>
+            
+            <div className="h-4 w-px bg-white/10 mx-1" />
+            <button 
+              onClick={() => setIsEditMode(!isEditMode)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all w-fit ${
               isEditMode 
                 ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]' 
@@ -1320,7 +1403,8 @@ export default function Dashboard() {
             Testar Bia
           </button>
         </div>
-        <div className="flex items-center gap-2 md:gap-6 min-w-0">
+      </div>
+      <div className="flex items-center gap-2 md:gap-6 min-w-0">
           <button 
             onClick={toggleTheme}
             className="p-1.5 md:p-2 hover:bg-white/10 rounded-full transition-colors text-white/60 hover:text-white shrink-0"

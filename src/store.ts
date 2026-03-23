@@ -174,8 +174,13 @@ export const useStore = create<AppState>()(
 
           // Check for errors
           results.forEach((res, index) => {
-            if (res.error && res.error.code !== 'PGRST116') { // Ignore single() error if no settings yet
-              console.error(`Erro ao carregar tabela (index ${index}):`, res.error);
+            if (res.error && res.error.code !== 'PGRST116') { 
+              // Se for erro de tabela não encontrada (PGRST205), apenas avisa no console de forma amigável
+              if (res.error.code === 'PGRST205') {
+                console.warn(`Tabela (index ${index}) ainda não criada no Supabase. Use o SQL Editor para criá-la.`);
+              } else {
+                console.error(`Erro ao carregar tabela (index ${index}):`, res.error);
+              }
             }
           });
 

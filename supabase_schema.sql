@@ -366,7 +366,20 @@ CREATE TABLE IF NOT EXISTS energy_records (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 26. Tabela de Comandos do WhatsApp
+-- 26. Tabela de Notificações
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('INFO', 'WARNING', 'SUCCESS', 'ERROR')),
+  date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  read BOOLEAN DEFAULT FALSE,
+  link TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 27. Tabela de Comandos do WhatsApp
 CREATE TABLE IF NOT EXISTS whatsapp_commands (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   sender_name TEXT,
@@ -377,8 +390,9 @@ CREATE TABLE IF NOT EXISTS whatsapp_commands (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Habilitar Realtime para esta tabela
+-- Habilitar Realtime para estas tabelas
 ALTER PUBLICATION supabase_realtime ADD TABLE whatsapp_commands;
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
 -- ==========================================
 -- TRIGGERS PARA ATUALIZAR O UPDATED_AT
