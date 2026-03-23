@@ -27,6 +27,7 @@ export const BiaBrain: React.FC = () => {
           console.log('BiaBrain: New command received from Supabase:', newCommand);
           
           if (!newCommand.processed) {
+            console.log('BiaBrain: Processing new command...');
             toast.success(`Bia recebeu um comando: "${newCommand.message_text.substring(0, 20)}..."`, {
               icon: '🤖',
               duration: 4000
@@ -37,8 +38,9 @@ export const BiaBrain: React.FC = () => {
           }
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         console.log(`BiaBrain: Realtime subscription status: ${status}`);
+        if (err) console.error('BiaBrain: Subscription error:', err);
       });
 
     return () => {
@@ -74,8 +76,11 @@ export const BiaBrain: React.FC = () => {
       
       if (!apiKey) {
         console.error('Bia Error: GEMINI_API_KEY is not defined in process.env or import.meta.env');
+        await sendWhatsAppMessage(sender_number, "Minha inteligência está desligada (chave API não configurada). Peça ao administrador para verificar.");
         return;
       }
+
+      console.log('Bia: Using API Key (first 5 chars):', apiKey.substring(0, 5));
 
       const ai = new GoogleGenAI({ apiKey });
       

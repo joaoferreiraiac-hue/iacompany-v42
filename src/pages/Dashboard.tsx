@@ -351,7 +351,138 @@ export default function Dashboard() {
     })
   );
 
+  const [isTestingWhatsapp, setIsTestingWhatsapp] = useState(false);
+
+  const handleTestWhatsapp = async () => {
+    setIsTestingWhatsapp(true);
+    try {
+      // Test outgoing
+      const success = await sendWhatsAppMessage('5511999999999', 'Teste de conexão BiaBrain ' + new Date().toLocaleTimeString());
+      if (success) {
+        toast.success('Mensagem de teste enviada!');
+      } else {
+        toast.error('Falha ao enviar mensagem. Verifique as chaves da Evolution API.');
+      }
+      
+      // Test incoming (simulate webhook)
+      const webhookRes = await fetch('/api/webhook/whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event: 'messages.upsert',
+          data: {
+            messages: [{
+              key: { remoteJid: 'test@s.whatsapp.net', fromMe: false },
+              pushName: 'Testador',
+              message: { conversation: 'Bia, teste interno' }
+            }]
+          }
+        })
+      });
+      
+      if (webhookRes.ok) {
+        toast.success('Webhook simulado com sucesso!');
+      }
+    } catch (err) {
+      toast.error('Erro no teste: ' + (err as Error).message);
+    } finally {
+      setIsTestingWhatsapp(false);
+    }
+  };
+
+  const [manualCommand, setManualCommand] = useState('');
+
+  const handleManualCommand = async () => {
+    if (!manualCommand.trim()) return;
+    try {
+      const { error } = await supabase.from('whatsapp_commands').insert([{
+        sender_name: 'Admin (Manual)',
+        sender_number: 'admin',
+        message_text: manualCommand,
+        processed: false,
+        created_at: new Date().toISOString()
+      }]);
+      
+      if (error) throw error;
+      toast.success('Comando manual enviado para processamento!');
+      setManualCommand('');
+    } catch (err) {
+      toast.error('Erro ao enviar comando: ' + (err as Error).message);
+    }
+  };
+
   const initialTiles: TileData[] = [
+    {
+      id: 'whatsapp-status',
+      type: 'square',
+      component: (
+        <div className="w-full h-full bg-emerald-600/20 backdrop-blur-md border border-emerald-500/30 rounded-3xl p-4 flex flex-col justify-between group relative overflow-hidden active:scale-95 transition-all">
+          <div className="flex items-center justify-between mb-2 relative z-10">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-emerald-500/20 rounded-lg">
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
+              </div>
+              <h3 className="text-[10px] font-bold text-white uppercase tracking-wider">Status Bia</h3>
+            </div>
+            <div className={`w-2 h-2 rounded-full ${biaStatus?.status === 'online' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+          </div>
+          
+          <div className="flex-1 space-y-1.5 text-[9px] relative z-10">
+            <div className="flex justify-between text-emerald-100/70">
+              <span>Servidor:</span>
+              <span className="text-white font-mono">{biaStatus?.status || 'offline'}</span>
+            </div>
+            <div className="flex justify-between text-emerald-100/70">
+              <span>Webhook:</span>
+              <span className="text-white font-mono truncate max-w-[80px]">
+                {biaStatus?.lastWebhookReceived ? new Date(biaStatus.lastWebhookReceived).toLocaleTimeString() : 'Nunca'}
+              </span>
+            </div>
+            <div className="flex justify-between text-emerald-100/70">
+              <span>Última Msg:</span>
+              <span className="text-white font-mono truncate max-w-[80px]">
+                {biaStatus?.lastMessageExtracted || 'Nenhuma'}
+              </span>
+            </div>
+            
+            <div className="pt-1">
+              <input 
+                type="text"
+                value={manualCommand}
+                onChange={(e) => setManualCommand(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleManualCommand()}
+                placeholder="Comando manual..."
+                className="w-full bg-black/20 border border-emerald-500/30 rounded px-2 py-1 text-[8px] text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-400"
+              />
+            </div>
+          </div>
+          
+          <div className="flex gap-1 mt-2 relative z-10">
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleManualCommand();
+              }}
+              className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[8px] font-bold transition-colors"
+            >
+              Enviar
+            </button>
+            <button 
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleTestWhatsapp();
+              }}
+              disabled={isTestingWhatsapp}
+              className="px-2 py-1 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center justify-center"
+            >
+              {isTestingWhatsapp ? <Activity className="w-3 h-3 animate-spin" /> : <Wifi className="w-3 h-3" />}
+            </button>
+          </div>
+        </div>
+      )
+    },
     {
       id: 'tickets',
       type: 'wide',

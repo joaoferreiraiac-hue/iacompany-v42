@@ -394,6 +394,13 @@ CREATE TABLE IF NOT EXISTS whatsapp_commands (
 ALTER PUBLICATION supabase_realtime ADD TABLE whatsapp_commands;
 ALTER PUBLICATION supabase_realtime ADD TABLE notifications;
 
+-- Habilitar RLS para whatsapp_commands
+ALTER TABLE whatsapp_commands ENABLE ROW LEVEL SECURITY;
+
+-- Políticas para whatsapp_commands (Acesso total para o app)
+DROP POLICY IF EXISTS "Allow all access to whatsapp_commands" ON whatsapp_commands;
+CREATE POLICY "Allow all access to whatsapp_commands" ON whatsapp_commands FOR ALL USING (true) WITH CHECK (true);
+
 -- ==========================================
 -- TRIGGERS PARA ATUALIZAR O UPDATED_AT
 -- ==========================================
